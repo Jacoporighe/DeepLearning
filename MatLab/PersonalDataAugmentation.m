@@ -14,20 +14,16 @@ yE = DATA{2}; %label dei patterns
 NX = DATA{1}; %immagini
 
 %carica rete pre-trained
-net = imagePretrainedNetwork("alexnet",Weights="none");
+net = imagePretrainedNetwork("alexnet", Weights="none");
 siz = [227 227];
 
 %parametri rete neurale
 miniBatchSize = 30;
 learningRate = 1e-4;
 metodoOptim = 'sgdm';
-options = trainingOptions(metodoOptim, ...
-    'MiniBatchSize', miniBatchSize, ...
-    'MaxEpochs', 30, ...
-    'InitialLearnRate', learningRate, ...
-    'Verbose', false, ...
-    'Plots', 'training-progress');
-numIterationsPerEpoch = floor(DIM1 / miniBatchSize);
+
+% Function to capture training progress
+trainingProgress = @(info) plotTrainingProgress(info);
 
 for fold = 1:NF
     close all force
@@ -52,7 +48,7 @@ for fold = 1:NF
     end
 
     % Apply custom augmentation
-    [trainingImages, y] = augmentData(trainingImages, y);
+    [trainingImages, y] = augmentData(trainingImages, y, fold);
 
     % Convert to 4D array for training
     trainingImages4D = cat(4, trainingImages{:});
@@ -67,6 +63,14 @@ for fold = 1:NF
         'RandXTranslation', [0 5], ...
         'RandYTranslation', [0 5]);
     augmentedTrainingImages = augmentedImageSource(size(trainingImages4D, [1,2,3]), trainingImages4D, categorical(y), 'DataAugmentation', imageAugmenter);
+
+    % Training options
+    options = trainingOptions(metodoOptim, ...
+        'MiniBatchSize', miniBatchSize, ...
+        'MaxEpochs', 30, ...
+        'InitialLearnRate', learningRate, ...
+        'Verbose', false, ...
+        'Plots', 'training-progress');
 
     %tuning della rete
     layersTransfer = net.Layers(1:end-3);
@@ -97,12 +101,10 @@ for fold = 1:NF
     [a, b] = max(score{fold}');
     ACC(fold) = sum(b == yy) / length(yy);
 
-    %salvate quello che vi serve
-    %%%%%
-
 end
 
-function [augmentedImages, augmentedLabels] = augmentData(trainingImages, trainingLabels)
+
+function [augmentedImages, augmentedLabels] = augmentData(trainingImages, trainingLabels, fold)
     % Augment data using various techniques
     imageSize = size(trainingImages{1});
     augmentedImages = {};
@@ -115,48 +117,94 @@ function [augmentedImages, augmentedLabels] = augmentData(trainingImages, traini
         % Original image
         augmentedImages{end+1} = img;
         augmentedLabels(end+1) = label;
-        
+
         % Horizontal Flip
         flippedImg = flip(img, 2);
         augmentedImages{end+1} = flippedImg;
         augmentedLabels(end+1) = label;
-        
+
         % Random Rotation
         rotatedImg = imrotate(img, randi([-30, 30]), 'bilinear', 'crop');
         augmentedImages{end+1} = rotatedImg;
         augmentedLabels(end+1) = label;
-        
+
         % Random Crop
         cropSize = imageSize(1:2) - randi([0, min(imageSize(1:2))-1], 1, 2);
         croppedImg = imcrop(img, [randi([0, imageSize(2) - cropSize(2)]), randi([0, imageSize(1) - cropSize(1)]), cropSize(2) - 1, cropSize(1) - 1]);
         croppedImg = imresize(croppedImg, imageSize(1:2));
         augmentedImages{end+1} = croppedImg;
         augmentedLabels(end+1) = label;
-        
+
         % Shifting
         shiftedImg = imtranslate(img, [randi([-10, 10]), randi([-10, 10])]);
         augmentedImages{end+1} = shiftedImg;
         augmentedLabels(end+1) = label;
-        
+
         % Color Jittering
         jitteredImg = jitterColorHSV(img, 'Contrast', 0.2, 'Saturation', 0.2, 'Brightness', 0.2);
         augmentedImages{end+1} = jitteredImg;
         augmentedLabels(end+1) = label;
-        
+
         % Adding Noise
         noisyImg = imnoise(img, 'gaussian', 0, 0.01);
         augmentedImages{end+1} = noisyImg;
         augmentedLabels(end+1) = label;
-        
+
         % PCA Jittering
         pcaJitteredImg = pcaJitter(img);
         augmentedImages{end+1} = pcaJitteredImg;
+        augmentedLabels(end+1) = label;
+
+        % Technique 1: Random Rotation and Adding Noise
+        % Random Rotation
+        rotatedImg = imrotate(img, randi([-30, 30]), 'bilinear', 'crop');
+
+        % Adding Noise
+        noisyImg = imnoise(rotatedImg, 'gaussian', 0, 0.01);
+        augmentedImages{end+1} = noisyImg;
+        augmentedLabels(end+1) = label;
+
+        % Technique 2: Horizontal Flip and PCA Jittering
+        % Horizontal Flip
+        flippedImg = flip(img, 2);
+
+        % PCA Jittering
+        pcaJitteredImg = pcaJitter(flippedImg);
+        augmentedImages{end+1} = pcaJitteredImg;
+        augmentedLabels(end+1) = label;
+
+
+        % Technique 3: Random Crop, Shift, and Add Noise
+        % Random Crop
+        cropSize = imageSize(1:2) - randi([0, min(imageSize(1:2))-1], 1, 2);
+        croppedImg = imcrop(img, [randi([0, imageSize(2) - cropSize(2)]), randi([0, imageSize(1) - cropSize(1)]), cropSize(2) - 1, cropSize(1) - 1]);
+        croppedImg = imresize(croppedImg, imageSize(1:2));
+        
+        % Shifting
+        shiftedImg = imtranslate(croppedImg, [randi([-10, 10]), randi([-10, 10])]);
+        
+        % Adding Noise
+        noisyImg = imnoise(shiftedImg, 'gaussian', 0, 0.01);
+        augmentedImages{end+1} = noisyImg;
+        augmentedLabels(end+1) = label;
+
+        % Technique 4: Horizontal Flip, Random Rotation, and Color Jittering
+        % Horizontal Flip
+        flippedImg = flip(img, 2);
+        
+        % Random Rotation
+        rotatedImg = imrotate(flippedImg, randi([-30, 30]), 'bilinear', 'crop');
+        
+        % Color Jittering
+        jitteredImg = jitterColorHSV(rotatedImg, 'Contrast', 0.2, 'Saturation', 0.2, 'Brightness', 0.2);
+        augmentedImages{end+1} = jitteredImg;
         augmentedLabels(end+1) = label;
     end
     
     augmentedImages = augmentedImages';
     augmentedLabels = augmentedLabels';
 end
+
 
 function jitteredImg = pcaJitter(img)
     % Perform PCA on the image and add jitter
@@ -168,3 +216,6 @@ function jitteredImg = pcaJitter(img)
     jitteredImg = reshape(jitteredImgFlat, size(img));
     jitteredImg = uint8(jitteredImg);
 end
+
+
+
