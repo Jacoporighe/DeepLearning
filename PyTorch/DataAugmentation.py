@@ -5,8 +5,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 from torchvision import transforms, models
+from sklearn.model_selection import KFold
 
 # Custom dataset class
 class CustomDataset(Dataset):
@@ -153,43 +154,84 @@ test_images = [Image.fromarray(NX[i].astype(np.uint8)) for i in test_patterns]
 # Augment data
 augmented_images, augmented_labels = augment_data(train_images, train_labels)
 
-# Create PyTorch dataset and DataLoader
+# Create PyTorch dataset
 transform = transforms.Compose([
     transforms.Resize((227, 227)),
     transforms.ToTensor()
 ])
 train_dataset = CustomDataset(augmented_images, augmented_labels, transform=transform)
-train_dataloader = DataLoader(train_dataset, batch_size=30, shuffle=True)
 
-# Load pretrained network
-model = models.alexnet(pretrained=True)
-model.classifier[6] = nn.Linear(model.classifier[6].in_features, 2)  # Assuming binary classification
+# Define the number of folds
+k_folds = 5
+kfold = KFold(n_splits=k_folds, shuffle=True)
+
+# Initialize lists to hold training and validation losses for each fold
+train_losses = []
+val_losses = []
 
 # Training parameters
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(model.parameters(), lr=1e-4, momentum=0.9)
-
-# Training loop
 num_epochs = 10
-for epoch in range(num_epochs):
-    model.train()
-    running_loss = 0.0
-    for inputs, labels in train_dataloader:
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
-        running_loss += loss.item() * inputs.size(0)
-    epoch_loss = running_loss / len(train_dataloader.dataset)
-    print(f'Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss:.4f}')
+for fold, (train_ids, val_ids) in enumerate(kfold.split(augmented_images)):
+    print(f'Fold {fold+1}/{k_folds}')
+    
+    # Sample elements randomly for this fold
+    train_subsampler = SubsetRandomSampler(train_ids)
+    val_subsampler = SubsetRandomSampler(val_ids)
+    
+    # Define data loaders for training and validation sets
+    train_loader = DataLoader(train_dataset, batch_size=30, sampler=train_subsampler)
+    val_loader = DataLoader(train_dataset, batch_size=30, sampler=val_subsampler)
+    
+    # Initialize the model, criterion, and optimizer for each fold
+    model = models.alexnet(pretrained=True)
+    model.classifier[6] = nn.Linear(model.classifier[6].in_features, 2)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(), lr=1e-4, momentum=0.9)
+    
+    # Training loop
+    for epoch in range(num_epochs):
+        model.train()
+        running_train_loss = 0.0
+        for inputs, labels in train_loader:
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            running_train_loss += loss.item() * inputs.size(0)
+        
+        epoch_train_loss = running_train_loss / len(train_loader.dataset)
+        
+        # Validation loop
+        model.eval()
+        running_val_loss = 0.0
+        with torch.no_grad():
+            for inputs, labels in val_loader:
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+                running_val_loss += loss.item() * inputs.size(0)
+        
+        epoch_val_loss = running_val_loss / len(val_loader.dataset)
+        
+        # Save training and validation losses
+        train_losses.append(epoch_train_loss)
+        val_losses.append(epoch_val_loss)
+        
+        print(f'Epoch {epoch+1}/{num_epochs}, Train Loss: {epoch_train_loss:.4f}, Val Loss: {epoch_val_loss:.4f}')
+    
+    print(f'Finished Fold {fold+1}/{k_folds}')
+
+# Calculate average loss across folds
+avg_train_loss = sum(train_losses) / len(train_losses)
+avg_val_loss = sum(val_losses) / len(val_losses)
+print(f'Average Train Loss: {avg_train_loss:.4f}, Average Val Loss: {avg_val_loss:.4f}')
 
 # Evaluation (just for the purpose of completeness, actual testing would be similar)
 model.eval()
 correct = 0
 total = 0
 with torch.no_grad():
-    for inputs, labels in train_dataloader:
+    for inputs, labels in DataLoader(train_dataset, batch_size=30, shuffle=True):
         outputs = model(inputs)
         _, predicted = torch.max(outputs, 1)
         total += labels.size(0)
