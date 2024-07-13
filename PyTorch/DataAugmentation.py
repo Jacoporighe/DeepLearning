@@ -1,5 +1,5 @@
 import random
-from PIL import Image
+from PIL import Image, ImageOps, ImageEnhance
 import scipy.io
 import numpy as np
 import torch
@@ -30,39 +30,83 @@ def augment_data(images, labels):
     augmented_images = []
     augmented_labels = []
     for img, label in zip(images, labels):
-        # Convert to PIL image if necessary
-        if isinstance(img, np.ndarray):
-            img = Image.fromarray(img.astype(np.uint8))
+        # Technique 1: Original Image
+        augmented_images.append(img)
+        augmented_labels.append(label)
 
-        # Technique 1: Add Gaussian noise
+        # Technique 2: Horizontal Flip
+        flipped_img = img.transpose(Image.FLIP_LEFT_RIGHT)
+        augmented_images.append(flipped_img)
+        augmented_labels.append(label)
+
+        # Technique 3: Random Rotation
+        rotated_img = img.rotate(random.randint(-30, 30), resample=Image.BILINEAR)
+        augmented_images.append(rotated_img)
+        augmented_labels.append(label)
+
+        # Technique 4: Random Crop
+        crop_size = (random.randint(0, img.size[0] - 1), random.randint(0, img.size[1] - 1))
+        cropped_img = img.crop((0, 0, crop_size[0], crop_size[1])).resize(img.size)
+        augmented_images.append(cropped_img)
+        augmented_labels.append(label)
+
+        # Technique 5: Shifting
+        shifted_img = img.transform(img.size, Image.AFFINE, (1, 0, random.randint(-10, 10), 0, 1, random.randint(-10, 10)))
+        augmented_images.append(shifted_img)
+        augmented_labels.append(label)
+
+        # Technique 6: Color Jittering
+        jittered_img = ImageEnhance.Contrast(img).enhance(1 + (random.random() - 0.5) * 0.4)
+        jittered_img = ImageEnhance.Color(jittered_img).enhance(1 + (random.random() - 0.5) * 0.4)
+        jittered_img = ImageEnhance.Brightness(jittered_img).enhance(1 + (random.random() - 0.5) * 0.4)
+        augmented_images.append(jittered_img)
+        augmented_labels.append(label)
+
+        # Technique 7: Adding Noise
         img_array = np.array(img)
-        noisy_img = img_array + np.random.normal(0, 0.01, img_array.shape)
+        noisy_img = img_array + np.random.normal(0, 0.01 * 255, img_array.shape)
         noisy_img = np.clip(noisy_img, 0, 255).astype(np.uint8)
         noisy_img = Image.fromarray(noisy_img)
         augmented_images.append(noisy_img)
         augmented_labels.append(label)
 
-        # Technique 2: Horizontal Flip and PCA Jittering
-        flipped_img = img.transpose(Image.FLIP_LEFT_RIGHT)
-        pca_jittered_img = pca_jitter(flipped_img)
+        # Technique 8: PCA Jittering
+        pca_jittered_img = pca_jitter(img)
         augmented_images.append(pca_jittered_img)
         augmented_labels.append(label)
 
-        # Technique 3: Random Crop, Shift, and Add Noise
+        # Technique 9: Random Rotation and Adding Noise
+        rotated_img = img.rotate(random.randint(-30, 30), resample=Image.BILINEAR)
+        rotated_img_array = np.array(rotated_img)
+        noisy_rotated_img = rotated_img_array + np.random.normal(0, 0.01 * 255, rotated_img_array.shape)
+        noisy_rotated_img = np.clip(noisy_rotated_img, 0, 255).astype(np.uint8)
+        noisy_rotated_img = Image.fromarray(noisy_rotated_img)
+        augmented_images.append(noisy_rotated_img)
+        augmented_labels.append(label)
+
+        # Technique 10: Horizontal Flip and PCA Jittering
+        flipped_img = img.transpose(Image.FLIP_LEFT_RIGHT)
+        pca_jittered_flipped_img = pca_jitter(flipped_img)
+        augmented_images.append(pca_jittered_flipped_img)
+        augmented_labels.append(label)
+
+        # Technique 11: Random Crop, Shift, and Add Noise
         crop_size = (random.randint(0, img.size[0] - 1), random.randint(0, img.size[1] - 1))
         cropped_img = img.crop((0, 0, crop_size[0], crop_size[1])).resize(img.size)
         shifted_img = cropped_img.transform(img.size, Image.AFFINE, (1, 0, random.randint(-10, 10), 0, 1, random.randint(-10, 10)))
-        shifted_img = np.array(shifted_img)
-        noisy_shifted_img = shifted_img + np.random.normal(0, 0.01, shifted_img.shape)
+        shifted_img_array = np.array(shifted_img)
+        noisy_shifted_img = shifted_img_array + np.random.normal(0, 0.01 * 255, shifted_img_array.shape)
         noisy_shifted_img = np.clip(noisy_shifted_img, 0, 255).astype(np.uint8)
         noisy_shifted_img = Image.fromarray(noisy_shifted_img)
         augmented_images.append(noisy_shifted_img)
         augmented_labels.append(label)
 
-        # Technique 4: Horizontal Flip, Random Rotation, and Color Jittering
+        # Technique 12: Horizontal Flip, Random Rotation, and Color Jittering
         flipped_img = img.transpose(Image.FLIP_LEFT_RIGHT)
-        rotated_img = flipped_img.rotate(random.randint(-30, 30))
-        jittered_img = transforms.ColorJitter(contrast=0.2, saturation=0.2, brightness=0.2)(rotated_img)
+        rotated_img = flipped_img.rotate(random.randint(-30, 30), resample=Image.BILINEAR)
+        jittered_img = ImageEnhance.Contrast(rotated_img).enhance(1 + (random.random() - 0.5) * 0.4)
+        jittered_img = ImageEnhance.Color(jittered_img).enhance(1 + (random.random() - 0.5) * 0.4)
+        jittered_img = ImageEnhance.Brightness(jittered_img).enhance(1 + (random.random() - 0.5) * 0.4)
         augmented_images.append(jittered_img)
         augmented_labels.append(label)
 
@@ -83,7 +127,7 @@ def pca_jitter(img):
     return Image.fromarray(jittered_img)
 
 # Load data
-mat_data = scipy.io.loadmat('DatasColor_29.mat')
+mat_data = scipy.io.loadmat('/Users/giacomosanguin/Documents/GitHub/DeepLearning/PyTorch/DatasColor_29.mat')
 data = mat_data['DATA']
 
 NF = data[0, 2].shape[0]  # number of folds
@@ -137,18 +181,17 @@ for epoch in range(num_epochs):
         loss.backward()
         optimizer.step()
         running_loss += loss.item() * inputs.size(0)
-
     epoch_loss = running_loss / len(train_dataloader.dataset)
     print(f'Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss:.4f}')
 
-# Evaluation (mock evaluation for demonstration)
+# Evaluation (just for the purpose of completeness, actual testing would be similar)
 model.eval()
-accuracy = 0.0
+correct = 0
+total = 0
 with torch.no_grad():
     for inputs, labels in train_dataloader:
         outputs = model(inputs)
-        _, preds = torch.max(outputs, 1)
-        accuracy += torch.sum(preds == labels.data)
-
-accuracy = accuracy.double() / len(train_dataloader.dataset)
-print(f'Accuracy: {accuracy:.4f}')
+        _, predicted = torch.max(outputs, 1)
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+print(f'Accuracy on augmented training set: {100 * correct / total:.2f}%')
