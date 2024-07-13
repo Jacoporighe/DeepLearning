@@ -2,10 +2,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import scipy.io
-import numpy as np
 from torch.utils.data import DataLoader, TensorDataset, random_split
 from sklearn.model_selection import KFold
+import numpy as np
+import scipy.io
 
 # Constants
 AMINO_ACIDS = 'ACDEFGHIKLMNPQRSTVWY'
@@ -59,22 +59,23 @@ test_labels = test_labels[test_indices]
 train_dataset = TensorDataset(train_data, train_labels)
 test_dataset = TensorDataset(test_data, test_labels)
 
-# CNN Model with Dropout
-class CNNModel(nn.Module):
+# Improved CNN Model with Batch Normalization
+class ImprovedCNNModel(nn.Module):
     def __init__(self):
-        super(CNNModel, self).__init__()
-        self.conv1 = nn.Conv1d(in_channels=len(AMINO_ACIDS), out_channels=32, kernel_size=3, padding=1)
+        super(ImprovedCNNModel, self).__init__()
+        self.conv1 = nn.Conv1d(in_channels=len(AMINO_ACIDS), out_channels=64, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm1d(64)
         self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
-        self.dropout = nn.Dropout(p=0.5)  # Increased dropout rate
-        self.fc1 = nn.Linear(32 * (MAX_SEQ_LEN // 2), 128)
+        self.dropout = nn.Dropout(p=0.5)
+        self.fc1 = nn.Linear(64 * (MAX_SEQ_LEN // 2), 128)
         self.fc2 = nn.Linear(128, 1)
     
     def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.bn1(self.conv1(x))))
         x = self.dropout(x)
-        x = x.view(x.size(0), -1)  # Flatten the tensor
+        x = x.view(x.size(0), -1)
         x = F.relu(self.fc1(x))
-        x = self.dropout(x)  # Dropout after first fully connected layer
+        x = self.dropout(x)
         x = torch.sigmoid(self.fc2(x)).squeeze(1)
         return x
 
@@ -92,12 +93,12 @@ def train_model_kfold(dataset, k, num_epochs, lr):
         train_loader = DataLoader(train_subset, batch_size=32, shuffle=True)
         val_loader = DataLoader(val_subset, batch_size=32, shuffle=False)
 
-        model = CNNModel()
+        model = ImprovedCNNModel()
         criterion = nn.BCELoss()
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0.01)
 
         best_val_loss = float('inf')
-        patience, trials = 5, 0  # Early stopping parameters
+        patience, trials = 5, 0
 
         for epoch in range(num_epochs):
             model.train()
@@ -127,7 +128,6 @@ def train_model_kfold(dataset, k, num_epochs, lr):
             val_accuracy = correct / total
             print(f'Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}')
             
-            # Early stopping
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 trials = 0
@@ -158,15 +158,14 @@ def evaluate_model(model, test_loader):
     print(f'Test Accuracy: {test_accuracy * 100:.2f}%')
 
 # Perform Cross-Validation
-train_model_kfold(train_dataset, k=5, num_epochs=20, lr=0.001)
+train_model_kfold(train_dataset, k=5, num_epochs=20, lr=0.0005)
 
 # Final Evaluation on Test Set
 test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-final_model = CNNModel()
+final_model = ImprovedCNNModel()
 final_model.train()
-# You should train the final model on the entire train_dataset before evaluating
 criterion = nn.BCELoss()
-optimizer = optim.Adam(final_model.parameters(), lr=0.001, weight_decay=0.01)
+optimizer = optim.Adam(final_model.parameters(), lr=0.0005, weight_decay=0.01)
 for epoch in range(20):
     for batch_data, batch_labels in DataLoader(train_dataset, batch_size=32, shuffle=True):
         optimizer.zero_grad()
