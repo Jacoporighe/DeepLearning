@@ -79,7 +79,7 @@ class CNNModel(nn.Module):
         return x
 
 # Training function with Cross-Validation and Early Stopping
-def train_model_kfold(dataset, k=5, num_epochs=20, lr=0.001):
+def train_model_kfold(dataset, k, num_epochs, lr):
     kf = KFold(n_splits=k, shuffle=True, random_state=42)
     fold_results = []
 
