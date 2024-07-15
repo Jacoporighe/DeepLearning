@@ -8,6 +8,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 from torchvision import transforms, models
 from sklearn.model_selection import KFold
+import matplotlib.pyplot as plt
 
 # Custom dataset class
 class CustomDataset(Dataset):
@@ -128,7 +129,7 @@ def pca_jitter(img):
     return Image.fromarray(jittered_img)
 
 # Load data
-mat_data = scipy.io.loadmat('/Users/giacomosanguin/Documents/GitHub/DeepLearning/PyTorch/DatasColor_29.mat')
+mat_data = scipy.io.loadmat('DatasColor_29.mat')
 data = mat_data['DATA']
 
 NF = data[0, 2].shape[0]  # number of folds
@@ -165,9 +166,11 @@ train_dataset = CustomDataset(augmented_images, augmented_labels, transform=tran
 k_folds = 5
 kfold = KFold(n_splits=k_folds, shuffle=True)
 
-# Initialize lists to hold training and validation losses for each fold
+# Initialize lists to hold training and validation losses and accuracies for each fold
 train_losses = []
 val_losses = []
+train_accuracies = []
+val_accuracies = []
 
 # Training parameters
 num_epochs = 10
@@ -178,20 +181,28 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(augmented_images)):
     train_subsampler = SubsetRandomSampler(train_ids)
     val_subsampler = SubsetRandomSampler(val_ids)
     
-    # Define data loaders for training and validation sets
+    # Define data loaders for training and validation
     train_loader = DataLoader(train_dataset, batch_size=30, sampler=train_subsampler)
     val_loader = DataLoader(train_dataset, batch_size=30, sampler=val_subsampler)
     
     # Initialize the model, criterion, and optimizer for each fold
-    model = models.alexnet(pretrained=True)
+    model = models.alexnet(weights='AlexNet_Weights.DEFAULT')
     model.classifier[6] = nn.Linear(model.classifier[6].in_features, 2)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=1e-4, momentum=0.9)
+    
+    # Initialize lists to hold the losses and accuracies for each epoch
+    fold_train_losses = []
+    fold_val_losses = []
+    fold_train_accuracies = []
+    fold_val_accuracies = []
     
     # Training loop
     for epoch in range(num_epochs):
         model.train()
         running_train_loss = 0.0
+        running_train_correct = 0
+        running_train_total = 0
         for inputs, labels in train_loader:
             optimizer.zero_grad()
             outputs = model(inputs)
@@ -199,32 +210,78 @@ for fold, (train_ids, val_ids) in enumerate(kfold.split(augmented_images)):
             loss.backward()
             optimizer.step()
             running_train_loss += loss.item() * inputs.size(0)
+            
+            _, predicted = torch.max(outputs, 1)
+            running_train_total += labels.size(0)
+            running_train_correct += (predicted == labels).sum().item()
         
         epoch_train_loss = running_train_loss / len(train_loader.dataset)
+        epoch_train_accuracy = running_train_correct / running_train_total
+        fold_train_losses.append(epoch_train_loss)
+        fold_train_accuracies.append(epoch_train_accuracy)
         
         # Validation loop
         model.eval()
         running_val_loss = 0.0
+        running_val_correct = 0
+        running_val_total = 0
         with torch.no_grad():
             for inputs, labels in val_loader:
                 outputs = model(inputs)
-                loss = criterion(outputs, labels)
+                loss = criterion(outputs, labels)  # Corrected this line
                 running_val_loss += loss.item() * inputs.size(0)
+                
+                _, predicted = torch.max(outputs, 1)
+                running_val_total += labels.size(0)
+                running_val_correct += (predicted == labels).sum().item()
         
         epoch_val_loss = running_val_loss / len(val_loader.dataset)
+        epoch_val_accuracy = running_val_correct / running_val_total
+        fold_val_losses.append(epoch_val_loss)
+        fold_val_accuracies.append(epoch_val_accuracy)
         
-        # Save training and validation losses
-        train_losses.append(epoch_train_loss)
-        val_losses.append(epoch_val_loss)
-        
-        print(f'Epoch {epoch+1}/{num_epochs}, Train Loss: {epoch_train_loss:.4f}, Val Loss: {epoch_val_loss:.4f}')
+        print(f'Epoch {epoch+1}/{num_epochs}, Train Loss: {epoch_train_loss:.4f}, Train Accuracy: {epoch_train_accuracy:.4f}, Val Loss: {epoch_val_loss:.4f}, Val Accuracy: {epoch_val_accuracy:.4f}')
+    
+    # Save losses and accuracies for each fold
+    train_losses.append(fold_train_losses)
+    val_losses.append(fold_val_losses)
+    train_accuracies.append(fold_train_accuracies)
+    val_accuracies.append(fold_val_accuracies)
     
     print(f'Finished Fold {fold+1}/{k_folds}')
 
-# Calculate average loss across folds
-avg_train_loss = sum(train_losses) / len(train_losses)
-avg_val_loss = sum(val_losses) / len(val_losses)
+# Calculate average loss and accuracy across folds
+avg_train_loss = np.mean([np.mean(fold) for fold in train_losses])
+avg_val_loss = np.mean([np.mean(fold) for fold in val_losses])
+avg_train_accuracy = np.mean([np.mean(fold) for fold in train_accuracies])
+avg_val_accuracy = np.mean([np.mean(fold) for fold in val_accuracies])
 print(f'Average Train Loss: {avg_train_loss:.4f}, Average Val Loss: {avg_val_loss:.4f}')
+print(f'Average Train Accuracy: {avg_train_accuracy:.4f}, Average Val Accuracy: {avg_val_accuracy:.4f}')
+
+# Plotting the training and validation losses and accuracies for each fold
+plt.figure(figsize=(14, 6))
+
+# Plot losses
+plt.subplot(1, 2, 1)
+for fold in range(k_folds):
+    plt.plot(train_losses[fold], label=f'Fold {fold+1} Train Loss')
+    plt.plot(val_losses[fold], label=f'Fold {fold+1} Val Loss', linestyle='--')
+plt.title('Loss per Epoch')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+
+# Plot accuracies
+plt.subplot(1, 2, 2)
+for fold in range(k_folds):
+    plt.plot(train_accuracies[fold], label=f'Fold {fold+1} Train Accuracy')
+    plt.plot(val_accuracies[fold], label=f'Fold {fold+1} Val Accuracy', linestyle='--')
+plt.title('Accuracy per Epoch')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.legend()
+
+plt.show()
 
 # Evaluation (just for the purpose of completeness, actual testing would be similar)
 model.eval()
@@ -237,3 +294,4 @@ with torch.no_grad():
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
 print(f'Accuracy on augmented training set: {100 * correct / total:.2f}%')
+
