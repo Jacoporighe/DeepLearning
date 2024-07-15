@@ -1,5 +1,6 @@
 import random
 from PIL import Image, ImageOps, ImageEnhance
+import requests
 import scipy.io
 import numpy as np
 import torch
@@ -128,8 +129,17 @@ def pca_jitter(img):
     jittered_img = np.clip(jittered_img, 0, 255).astype(np.uint8)
     return Image.fromarray(jittered_img)
 
+# Download the file
+url = 'https://www.dropbox.com/s/elfn1jd63k94mlr/DatasColor_29.mat?dl=1'
+response = requests.get(url)
+local_filename = 'DatasColor_29.mat'
+
+# Save the file locally
+with open(local_filename, 'wb') as f:
+    f.write(response.content)
+
 # Load data
-mat_data = scipy.io.loadmat('DatasColor_29.mat')
+mat_data = scipy.io.loadmat(local_filename)
 data = mat_data['DATA']
 
 NF = data[0, 2].shape[0]  # number of folds
