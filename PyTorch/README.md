@@ -190,5 +190,5 @@ This code is based on the AlexNet model and uses data augmentation techniques to
 ## Contributions
 Feel free to contribute to this project by submitting pull requests or reporting issues.
 
-## Contacts
+## Contacts
 For any questions, please contact [jacopo.righetto@studenti.unipd.it], [giacomo.sanguin@studenti.unipd.it].
