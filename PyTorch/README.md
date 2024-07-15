@@ -33,9 +33,9 @@ This project performs data augmentation and 5-fold cross-validation on a dataset
   - scikit-learn
 
 Install the required libraries using pip:
-
+```bash
 pip install numpy scipy matplotlib Pillow requests torch torchvision scikit-learn
-
+```
 
 ## Data Preparation
 
@@ -44,6 +44,7 @@ pip install numpy scipy matplotlib Pillow requests torch torchvision scikit-lear
 3. Extract the training and test patterns along with their labels.
 4. Ensure labels are in the range [0, 1].
 
+```python
 url = 'https://www.dropbox.com/s/elfn1jd63k94mlr/DatasColor_29.mat?dl=1'
 response = requests.get(url)
 local_filename = 'DatasColor_29.mat'
@@ -55,6 +56,7 @@ with open(local_filename, 'wb') as f:
 # Load data
 mat_data = scipy.io.loadmat(local_filename)
 data = mat_data['DATA']
+```
 
 ## Data Augmentation
 
